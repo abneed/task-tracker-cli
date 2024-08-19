@@ -1,12 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"task-cli/repository"
 	"task-cli/service"
+	"task-cli/util"
 	"task-cli/view"
 )
 
@@ -22,85 +23,75 @@ func main() {
 
 	// Validate if the command was called with arguments, otherwise throw an error and exit
 	if len(argumentsWithoutProg) == 0 {
-		log.Fatal("task-cli: error: You must provide an option.")
+		util.LogError(errors.New("you must provide an option"))
 	}
 
 	// Get the first argument and check if is valid
 	switch argument := argumentsWithoutProg[0]; argument {
 	case "add":
 		if len(argumentsWithoutProg) == 1 {
-			log.Fatal("task-cli: error: description not provided")
+			util.LogError(errors.New("description not provided"))
 		}
 		newTaskID, err := taskService.AddTask(argumentsWithoutProg[1])
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 		fmt.Printf("Task added successfully (ID: %d)\n", newTaskID)
 	case "update":
 		if len(argumentsWithoutProg) == 1 {
-			log.Fatal("task-cli: error: task id not provided")
+			util.LogError(errors.New("task id not provided"))
 		}
 		taskID, err := strconv.Atoi(argumentsWithoutProg[1])
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 		description := argumentsWithoutProg[2]
 		if len(description) == 0 {
-			log.Fatal("task-cli: error: description not provided")
+			util.LogError(errors.New("description not provided"))
 		}
 		_, err = taskService.UpdateTaskDescription(taskID, description)
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 	case "delete":
 		if len(argumentsWithoutProg) == 1 {
-			log.Fatal("task-cli: error: task id not provided")
+			util.LogError(errors.New("task id not provided"))
 		}
 		taskID, err := strconv.Atoi(argumentsWithoutProg[1])
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 		taskService.DeleteBy(taskID)
 	case "mark-in-progress":
 		if len(argumentsWithoutProg) == 1 {
-			log.Fatal("ttask-cli: error: ask id not provided")
+			util.LogError(errors.New("task id not provided"))
 		}
 		taskID, err := strconv.Atoi(argumentsWithoutProg[1])
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 		_, err = taskService.UpdateTaskStatus(taskID, "in-progress")
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 	case "mark-done":
 		if len(argumentsWithoutProg) == 1 {
-			log.Fatal("task-cli: error: task id not provided")
+			util.LogError(errors.New("task id not provided"))
 		}
 		taskID, err := strconv.Atoi(argumentsWithoutProg[1])
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 		_, err = taskService.UpdateTaskStatus(taskID, "done")
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 	case "list":
 		if len(argumentsWithoutProg) > 1 {
 			tasks, err := taskService.GetByStatus(argumentsWithoutProg[1])
-			if err != nil {
-				log.Fatal("task-cli: error: ", err)
-			}
+			util.LogError(err)
+
 			view.PromptTableTasks(tasks)
 			return
 		}
 		tasks, err := taskService.GetAll()
-		if err != nil {
-			log.Fatal("task-cli: error: ", err)
-		}
+		util.LogError(err)
+
 		view.PromptTableTasks(tasks)
 		return
 	default:
-		log.Fatal("task-cli: error: option provided not valid")
+		util.LogError(errors.New("option provided not valid"))
 	}
 }
