@@ -87,3 +87,6 @@ In case that the JSON file doesn't exists, the application will generate that di
 
 # Contributing
 Contributions are welcome! Please fork the repository and submit a pull request for review.
+
+# License
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/abneed/task-tracker-cli/blob/master/LICENSE) file for details.
