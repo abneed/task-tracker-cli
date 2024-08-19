@@ -7,12 +7,12 @@ import (
 )
 
 type TaskService interface {
-	GetAll() []datamodel.Task
-	GetByStatus(status string) []datamodel.Task
+	GetAll() ([]datamodel.Task, error)
+	GetByStatus(status string) ([]datamodel.Task, error)
 	AddTask(description string) (int, error)
 	UpdateTaskDescription(taskID int, description string) (datamodel.Task, error)
 	UpdateTaskStatus(taskID int, status string) (datamodel.Task, error)
-	DeleteBy(taskID int) bool
+	DeleteBy(taskID int) (bool, error)
 }
 
 type taskService struct {
@@ -23,13 +23,13 @@ func NewTaskService(repo repository.TaskRepository) TaskService {
 	return &taskService{repo: repo}
 }
 
-func (s *taskService) GetAll() []datamodel.Task {
+func (s *taskService) GetAll() ([]datamodel.Task, error) {
 	return s.repo.SelectMany(func(_ datamodel.Task) bool {
 		return true
 	}, -1)
 }
 
-func (s *taskService) GetByStatus(status string) []datamodel.Task {
+func (s *taskService) GetByStatus(status string) ([]datamodel.Task, error) {
 	return s.repo.SelectMany(func(t datamodel.Task) bool {
 		return t.Status == status
 	}, -1)
@@ -62,6 +62,6 @@ func (s *taskService) UpdateTaskStatus(taskID int, status string) (datamodel.Tas
 	})
 }
 
-func (s *taskService) DeleteBy(taskID int) bool {
+func (s *taskService) DeleteBy(taskID int) (bool, error) {
 	return s.repo.Delete(taskID)
 }

@@ -16,13 +16,13 @@ type Query func(datamodel.Task) bool
 type Assignment func(datamodel.Task) datamodel.Task
 
 type TaskRepository interface {
-	Exec(query Query, action Query, limit int, mode int) bool
+	Exec(query Query, action Query, limit int, mode int) (bool, error)
 
-	Select(query Query) (datamodel.Task, bool)
-	SelectMany(query Query, limit int) []datamodel.Task
+	Select(query Query) (datamodel.Task, bool, error)
+	SelectMany(query Query, limit int) ([]datamodel.Task, error)
 
 	InsertOrUpdate(id int, action Assignment) (datamodel.Task, error)
-	Delete(id int) bool
+	Delete(id int) (bool, error)
 }
 
 func NewTaskRepository(sourceFile string) TaskRepository {
@@ -46,11 +46,12 @@ func (r *taskFileRepository) validateSourceFile() (bool, error) {
 		err := os.Mkdir("db", os.ModePerm)
 		if err != nil {
 			log.Fatal(err)
+			return false, err
 		}
 
 		databaseFile, err := os.Create(r.sourceFile)
 		if err != nil {
-			log.Fatal(err)
+			return false, err
 		}
 		databaseFile.Close()
 
@@ -60,7 +61,7 @@ func (r *taskFileRepository) validateSourceFile() (bool, error) {
 	if _, err := os.Stat(r.sourceFile); errors.Is(err, os.ErrNotExist) {
 		databaseFile, err := os.Create(r.sourceFile)
 		if err != nil {
-			log.Fatal(err)
+			return false, err
 		}
 		databaseFile.Close()
 	}
@@ -72,7 +73,7 @@ func (r *taskFileRepository) readFile() (datamodel.Wrapper[datamodel.Task], erro
 
 	content, err := os.ReadFile(r.sourceFile)
 	if err != nil {
-		log.Fatal(err)
+		return datamodel.Wrapper[datamodel.Task]{}, err
 	}
 	if len(content) == 0 {
 		return datamodel.Wrapper[datamodel.Task]{
@@ -83,27 +84,30 @@ func (r *taskFileRepository) readFile() (datamodel.Wrapper[datamodel.Task], erro
 	wrapper := datamodel.Wrapper[datamodel.Task]{}
 	err = json.Unmarshal(content, &wrapper)
 	if err != nil {
-		log.Fatal(err)
+		return datamodel.Wrapper[datamodel.Task]{}, err
 	}
 	return wrapper, nil
 }
 
 func (r *taskFileRepository) writeFile(wrapper datamodel.Wrapper[datamodel.Task]) error {
-	r.validateSourceFile()
+	_, err := r.validateSourceFile()
+	if err != nil {
+		return err
+	}
 
 	bytes, err := json.Marshal(wrapper)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	err = os.WriteFile(r.sourceFile, bytes, 0644)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	return nil
 }
 
-func (r *taskFileRepository) Exec(query Query, action Query, actionLimit int, mode int) (ok bool) {
+func (r *taskFileRepository) Exec(query Query, action Query, actionLimit int, mode int) (bool, error) {
 	loops := 0
 
 	if mode == ReadOnlyMode {
@@ -116,9 +120,9 @@ func (r *taskFileRepository) Exec(query Query, action Query, actionLimit int, mo
 
 	wrapper, err := r.readFile()
 	if err != nil {
-		log.Fatal(err)
+		return false, err
 	}
-
+	ok := false
 	for _, task := range wrapper.Records {
 		ok = query(task)
 		if ok {
@@ -131,32 +135,39 @@ func (r *taskFileRepository) Exec(query Query, action Query, actionLimit int, mo
 		}
 	}
 
-	return
+	return ok, nil
 }
 
-func (r *taskFileRepository) Select(query Query) (datamodel.Task, bool) {
+func (r *taskFileRepository) Select(query Query) (datamodel.Task, bool, error) {
 	task := datamodel.Task{}
-	found := r.Exec(query, func(t datamodel.Task) bool {
+	found, err := r.Exec(query, func(t datamodel.Task) bool {
 		task = t
 		return true
 	}, 1, ReadOnlyMode)
+
+	if err != nil {
+		return datamodel.Task{}, found, err
+	}
 
 	// set an empty datamodel.Task if not found at all.
 	if !found {
 		task = datamodel.Task{}
 	}
 
-	return task, found
+	return task, found, nil
 }
 
-func (r *taskFileRepository) SelectMany(query Query, limit int) []datamodel.Task {
+func (r *taskFileRepository) SelectMany(query Query, limit int) ([]datamodel.Task, error) {
 	results := []datamodel.Task{}
-	r.Exec(query, func(m datamodel.Task) bool {
+	_, err := r.Exec(query, func(m datamodel.Task) bool {
 		results = append(results, m)
 		return true
 	}, limit, ReadOnlyMode)
+	if err != nil {
+		return []datamodel.Task{}, err
+	}
 
-	return results
+	return results, nil
 }
 
 func (r *taskFileRepository) InsertOrUpdate(id int, action Assignment) (datamodel.Task, error) {
@@ -170,7 +181,7 @@ func (r *taskFileRepository) InsertOrUpdate(id int, action Assignment) (datamode
 		r.mu.RLock()
 		wrapper, err := r.readFile()
 		if err != nil {
-			log.Fatal()
+			return datamodel.Task{}, err
 		}
 
 		currentIncrement = wrapper.CurrentIncrement
@@ -188,7 +199,7 @@ func (r *taskFileRepository) InsertOrUpdate(id int, action Assignment) (datamode
 
 		err = r.writeFile(wrapper)
 		if err != nil {
-			log.Fatal(err)
+			return datamodel.Task{}, err
 		}
 
 		r.mu.Unlock()
@@ -196,9 +207,12 @@ func (r *taskFileRepository) InsertOrUpdate(id int, action Assignment) (datamode
 		return task, nil
 	}
 
-	current, exists := r.Select(func(t datamodel.Task) bool {
+	current, exists, err := r.Select(func(t datamodel.Task) bool {
 		return t.ID == id
 	})
+	if err != nil {
+		return datamodel.Task{}, err
+	}
 
 	if !exists { // ID is not a real one, return an error.
 		return datamodel.Task{}, errors.New("failed to update a nonexistent task")
@@ -208,7 +222,7 @@ func (r *taskFileRepository) InsertOrUpdate(id int, action Assignment) (datamode
 	r.mu.RLock()
 	wrapper, err := r.readFile()
 	if err != nil {
-		log.Fatal()
+		return datamodel.Task{}, err
 	}
 	r.mu.RUnlock()
 
@@ -221,20 +235,20 @@ func (r *taskFileRepository) InsertOrUpdate(id int, action Assignment) (datamode
 
 	err = r.writeFile(wrapper)
 	if err != nil {
-		log.Fatal(err)
+		return datamodel.Task{}, err
 	}
 	r.mu.Unlock()
 
 	return task, nil
 }
 
-func (r *taskFileRepository) Delete(id int) bool {
+func (r *taskFileRepository) Delete(id int) (bool, error) {
 	deleted := false
 
 	r.mu.RLock()
 	wrapper, err := r.readFile()
 	if err != nil {
-		log.Fatal(err)
+		return false, err
 	}
 	r.mu.RUnlock()
 
@@ -249,9 +263,9 @@ func (r *taskFileRepository) Delete(id int) bool {
 
 	err = r.writeFile(wrapper)
 	if err != nil {
-		log.Fatal(err)
+		return false, err
 	}
 	r.mu.Unlock()
 
-	return deleted
+	return deleted, nil
 }

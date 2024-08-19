@@ -87,10 +87,18 @@ func main() {
 		}
 	case "list":
 		if len(argumentsWithoutProg) > 1 {
-			view.PromptTableTasks(taskService.GetByStatus(argumentsWithoutProg[1]))
+			tasks, err := taskService.GetByStatus(argumentsWithoutProg[1])
+			if err != nil {
+				log.Fatal("task-cli: error: ", err)
+			}
+			view.PromptTableTasks(tasks)
 			return
 		}
-		view.PromptTableTasks(taskService.GetAll())
+		tasks, err := taskService.GetAll()
+		if err != nil {
+			log.Fatal("task-cli: error: ", err)
+		}
+		view.PromptTableTasks(tasks)
 		return
 	default:
 		log.Fatal("task-cli: error: option provided not valid")
